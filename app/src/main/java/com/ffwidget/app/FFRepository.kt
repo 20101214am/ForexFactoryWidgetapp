@@ -139,23 +139,30 @@ object FFRepository {
     }
 
     fun loadCached(context: Context): List<CalEvent> {
-        val s = prefs(context).getString(KEY_EVENTS, null) ?: return emptyList()
-        val arr = JSONArray(s)
-        val out = mutableListOf<CalEvent>()
-        for (i in 0 until arr.length()) {
-            val o = arr.getJSONObject(i)
-            out.add(
-                CalEvent(
-                    o.getString("title"),
-                    o.getString("country"),
-                    o.getString("date"),
-                    o.getString("impact"),
-                    o.optString("forecast"),
-                    o.optString("previous")
+        return try {
+            val s = prefs(context).getString(KEY_EVENTS, null) ?: return emptyList()
+            val arr = JSONArray(s)
+            val out = mutableListOf<CalEvent>()
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                out.add(
+                    CalEvent(
+                        o.optString("title", ""),
+                        o.optString("country", ""),
+                        o.optString("date", ""),
+                        o.optString("impact", ""),
+                        o.optString("forecast", ""),
+                        o.optString("previous", "")
+                    )
                 )
-            )
+            }
+            out
+        } catch (e: Exception) {
+            // 缓存损坏（如旧版本写入的不同格式）时清空，让 ensureBaseline 重建，绝不让 onUpdate 崩溃
+            Log.e("FFRepo", "loadCached failed, clearing: ${e.message}")
+            prefs(context).edit().remove(KEY_EVENTS).apply()
+            emptyList()
         }
-        return out
     }
 
     fun lastUpdated(context: Context): Long = prefs(context).getLong(KEY_UPDATED, 0)

@@ -26,38 +26,33 @@ class FFWidgetProvider : AppWidgetProvider() {
 
     override fun onEnabled(context: Context) {
         scheduleRefresh(context)
-        // 首次添加立即拉取一次
-        val req = OneTimeWorkRequestBuilder<CalendarWorker>().build()
         WorkManager.getInstance(context)
-            .enqueueUniqueWork("ff-init", ExistingWorkPolicy.REPLACE, req)
+            .enqueueUniqueWork(
+                "ff-init", ExistingWorkPolicy.REPLACE,
+                OneTimeWorkRequestBuilder<CalendarWorker>().build()
+            )
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
-            ACTION_REFRESH -> {
-                val req = OneTimeWorkRequestBuilder<CalendarWorker>().build()
-                WorkManager.getInstance(context)
-                    .enqueueUniqueWork("ff-refresh", ExistingWorkPolicy.REPLACE, req)
-            }
+            ACTION_REFRESH -> WorkManager.getInstance(context)
+                .enqueueUniqueWork(
+                    "ff-refresh", ExistingWorkPolicy.REPLACE,
+                    OneTimeWorkRequestBuilder<CalendarWorker>().build()
+                )
             // 覆盖安装 / 升级后，自动刷新桌面上已有的小部件（避免旧「加载中」残留）
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
-                updateAll(context)
-            }
+            Intent.ACTION_MY_PACKAGE_REPLACED -> updateAll(context)
         }
     }
 
     companion object {
         const val ACTION_REFRESH = "com.ffwidget.app.ACTION_REFRESH"
+        private const val MAX_ROWS = 80
 
         private val MAJOR_KEYWORDS = listOf(
             "cpi", "nfp", "nonfarm", "non-farm", "fomc", "federal open"
         )
-
-        private sealed class Row {
-            data class Header(val label: String) : Row()
-            data class Item(val e: CalEvent) : Row()
-        }
 
         private val COUNTRY3 = mapOf(
             "US" to "USA", "CA" to "CAD", "EU" to "EUR",
@@ -74,23 +69,38 @@ class FFWidgetProvider : AppWidgetProvider() {
             val today = TimeUtils.todayETKey()
             return events.any { e ->
                 TimeUtils.dayKey(e.dateIso) == today &&
-                MAJOR_KEYWORDS.any { kw -> e.title.contains(kw, ignoreCase = true) }
+                        MAJOR_KEYWORDS.any { kw -> e.title.contains(kw, ignoreCase = true) }
             }
         }
 
-        private fun buildRows(events: List<CalEvent>): List<Row> {
-            val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
-            val out = mutableListOf<Row>()
-            var lastDay = ""
-            for (e in sorted) {
-                val day = TimeUtils.dayKey(e.dateIso)
-                if (day.isNotEmpty() && day != lastDay) {
-                    out.add(Row.Header(TimeUtils.dayLabel(e.dateIso)))
-                    lastDay = day
+        // 把所有行拼成一段带换行的文本，用单个 TextView 一次性渲染。
+        // 不使用 addView 嵌套 RemoteViews，规避国产 ROM / 旧版本的兼容性崩溃。
+        private fun buildText(events: List<CalEvent>): String {
+            return try {
+                val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
+                val sb = StringBuilder()
+                var lastDay = ""
+                var count = 0
+                for (e in sorted) {
+                    if (count >= MAX_ROWS) {
+                        sb.append("\n… 还有更多，请把小部件拉高")
+                        break
+                    }
+                    val day = TimeUtils.dayKey(e.dateIso)
+                    if (day.isNotEmpty() && day != lastDay) {
+                        sb.append("\n").append(TimeUtils.dayLabel(e.dateIso)).append("\n")
+                        lastDay = day
+                    }
+                    val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
+                    val tag = if (e.impact == "Holiday") "假期" else "●"
+                    sb.append("  ").append(time).append("  ").append(country3(e.country))
+                        .append("  [").append(tag).append("] ").append(e.title).append("\n")
+                    count++
                 }
-                out.add(Row.Item(e))
+                sb.toString().trimEnd()
+            } catch (e: Exception) {
+                "数据解析异常: ${e.message}"
             }
-            return out
         }
 
         fun updateAll(context: Context) {
@@ -100,6 +110,18 @@ class FFWidgetProvider : AppWidgetProvider() {
         }
 
         fun updateWidget(context: Context, mgr: AppWidgetManager, id: Int) {
+            try {
+                updateWidgetInner(context, mgr, id)
+            } catch (e: Exception) {
+                // 任何异常都降级为可读错误，绝不让系统弹出「加载出现问题」
+                try {
+                    showError(context, mgr, id, "ERR: ${e.message}")
+                } catch (_: Exception) {
+                }
+            }
+        }
+
+        private fun updateWidgetInner(context: Context, mgr: AppWidgetManager, id: Int) {
             val pkg = context.packageName
             val rv = RemoteViews(pkg, R.layout.widget_static)
 
@@ -131,43 +153,28 @@ class FFWidgetProvider : AppWidgetProvider() {
             val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
             rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
 
-            // 逐行渲染（静态 RemoteViews，不依赖 ListView，任何启动器都能显示）
-            rv.removeAllViews(R.id.widget_rows)
-            val rows = buildRows(events)
-            if (rows.isEmpty()) {
-                val empty = RemoteViews(pkg, R.layout.widget_empty_row)
-                empty.setTextViewText(R.id.empty_text, context.getString(R.string.widget_empty))
-                rv.addView(R.id.widget_rows, empty)
-            } else {
-                for (row in rows) {
-                    val rowRv = when (row) {
-                        is Row.Header -> {
-                            val r = RemoteViews(pkg, R.layout.widget_header)
-                            r.setTextViewText(R.id.header_text, row.label)
-                            r
-                        }
-                        is Row.Item -> {
-                            val e = row.e
-                            val r = RemoteViews(pkg, R.layout.widget_item)
-                            r.setTextViewText(
-                                R.id.item_time,
-                                if (e.impact == "Holiday") "全天" else TimeUtils.toET(e.dateIso)
-                            )
-                            r.setTextViewText(R.id.item_country, country3(e.country))
-                            r.setTextViewText(R.id.item_title, e.title)
-                            val color = if (e.impact == "Holiday") R.color.holiday else R.color.high
-                            r.setInt(R.id.item_bar, "setBackgroundResource", color)
-                            r
-                        }
-                    }
-                    rv.addView(R.id.widget_rows, rowRv)
-                }
-            }
+            // 逐行文本（单 TextView）
+            val text = if (events.isEmpty()) context.getString(R.string.widget_empty) else buildText(events)
+            rv.setTextViewText(R.id.widget_content, text)
 
             mgr.updateAppWidget(id, rv)
         }
 
-        fun scheduleRefresh(context: Context) {
+        private fun showError(context: Context, mgr: AppWidgetManager, id: Int, msg: String) {
+            val pkg = context.packageName
+            val rv = RemoteViews(pkg, R.layout.widget_static)
+            rv.setTextViewText(R.id.widget_title, "FF小部件出错")
+            rv.setViewVisibility(R.id.widget_banner, View.VISIBLE)
+            rv.setTextViewText(R.id.widget_banner, "加载失败")
+            rv.setTextViewText(R.id.widget_sub, msg.take(80))
+            rv.setTextViewText(
+                R.id.widget_content,
+                "请长按删除本小部件，再从桌面「小部件」列表重新添加一次。"
+            )
+            mgr.updateAppWidget(id, rv)
+        }
+
+        private fun scheduleRefresh(context: Context) {
             val req = PeriodicWorkRequestBuilder<CalendarWorker>(1, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()

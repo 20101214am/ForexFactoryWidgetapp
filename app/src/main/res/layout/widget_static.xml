@@ -52,11 +52,15 @@
         android:textColor="@color/widget_sub"
         android:textSize="12sp" />
 
-    <!-- 行容器：在 onUpdate 里通过 addView 逐行塞入 RemoteViews，不依赖 ListView -->
-    <LinearLayout
-        android:id="@+id/widget_rows"
+    <!-- 全部内容用单个 TextView 渲染：不依赖 addView 嵌套，任何启动器都能稳定显示 -->
+    <TextView
+        android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:layout_marginTop="4dp"
+        android:textColor="@color/widget_text"
+        android:textSize="14sp"
+        android:lineSpacingExtra="3dp"
+        android:scrollHorizontally="false" />
 
 </LinearLayout>
