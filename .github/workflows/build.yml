@@ -20,6 +20,12 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+          packages: >-
+            platforms;android-34
+            build-tools;34.0.0
+            platform-tools
 
       - name: Create local.properties
         run: echo "sdk.dir=$ANDROID_HOME" > local.properties
@@ -32,6 +38,7 @@ jobs:
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
+        if: success()
         with:
           name: ff-widget-apk
           path: app/build/outputs/apk/debug/*.apk
