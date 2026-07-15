@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="high">#E53935</color>        <!-- 红字 High / 警告横幅文字 -->
+    <color name="holiday">#FB8C00</color>     <!-- 假期 橙色 -->
+    <color name="banner_bg">#2A0A0A</color>  <!-- 警告横幅底色（深红） -->
+    <color name="widget_bg">#0E1116</color>
+    <color name="widget_text">#E6EDF3</color>
+    <color name="widget_sub">#8B949E</color>
+</resources>
