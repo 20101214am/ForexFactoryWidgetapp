@@ -6,7 +6,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.Constraints
@@ -45,18 +44,47 @@ class FFWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "com.ffwidget.app.ACTION_REFRESH"
 
-        // 重大新闻关键词（美东今日命中其一即显示红色警告横幅）
         private val MAJOR_KEYWORDS = listOf(
             "cpi", "nfp", "nonfarm", "non-farm", "fomc", "federal open"
         )
 
-        // 判断今日（美东）是否有 CPI / NFP / FOMC 等重大新闻
+        private sealed class Row {
+            data class Header(val label: String) : Row()
+            data class Item(val e: CalEvent) : Row()
+        }
+
+        private val COUNTRY3 = mapOf(
+            "US" to "USA", "CA" to "CAD", "EU" to "EUR",
+            "GB" to "GBR", "FR" to "FRA", "DE" to "DEU", "JP" to "JPN",
+            "AU" to "AUS", "CN" to "CHN", "CH" to "CHE", "IT" to "ITA",
+            "ES" to "ESP", "NZ" to "NZL", "ZA" to "ZAF", "BR" to "BRA",
+            "MX" to "MEX", "IN" to "IND", "RU" to "RUS", "KR" to "KOR",
+            "SE" to "SWE", "NO" to "NOR", "DK" to "DNK"
+        )
+
+        private fun country3(c: String): String = COUNTRY3[c.uppercase()] ?: c.uppercase()
+
         private fun hasMajorToday(events: List<CalEvent>): Boolean {
             val today = TimeUtils.todayETKey()
             return events.any { e ->
                 TimeUtils.dayKey(e.dateIso) == today &&
                 MAJOR_KEYWORDS.any { kw -> e.title.contains(kw, ignoreCase = true) }
             }
+        }
+
+        private fun buildRows(events: List<CalEvent>): List<Row> {
+            val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
+            val out = mutableListOf<Row>()
+            var lastDay = ""
+            for (e in sorted) {
+                val day = TimeUtils.dayKey(e.dateIso)
+                if (day.isNotEmpty() && day != lastDay) {
+                    out.add(Row.Header(TimeUtils.dayLabel(e.dateIso)))
+                    lastDay = day
+                }
+                out.add(Row.Item(e))
+            }
+            return out
         }
 
         fun updateAll(context: Context) {
@@ -66,26 +94,18 @@ class FFWidgetProvider : AppWidgetProvider() {
         }
 
         fun updateWidget(context: Context, mgr: AppWidgetManager, id: Int) {
-            val rv = RemoteViews(context.packageName, R.layout.widget_layout)
+            val pkg = context.packageName
+            val rv = RemoteViews(pkg, R.layout.widget_static)
 
-            val serviceIntent = Intent(context, EventWidgetService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, id)
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+            // 数据：缓存为空时用内置离线数据兜底（同步、即时，杜绝「一直加载中」）
+            var events = FFRepository.loadCached(context)
+            if (events.isEmpty()) {
+                FFRepository.ensureBaseline(context)
+                events = FFRepository.loadCached(context)
             }
-            rv.setRemoteAdapter(R.id.widget_list, serviceIntent)
-            rv.setEmptyView(R.id.widget_list, R.id.widget_empty)
-
-            // 点击条目 -> 打开 ForexFactory 日历页
-            val open = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.forexfactory.com/calendar"))
-            val openPi = PendingIntent.getActivity(
-                context, 0, open,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            rv.setPendingIntentTemplate(R.id.widget_list, openPi)
 
             // 重大新闻红色警告横幅
-            val major = hasMajorToday(FFRepository.loadCached(context))
-            if (major) {
+            if (hasMajorToday(events)) {
                 rv.setTextViewText(R.id.widget_banner, context.getString(R.string.banner_major))
                 rv.setViewVisibility(R.id.widget_banner, View.VISIBLE)
             } else {
@@ -100,23 +120,47 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_refresh, refreshPi)
 
+            // 副标题：数据来源 / 更新时间
             val src = FFRepository.source(context)
             val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
             rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
 
-            // 空状态文案：从未成功拉取过就提示网络问题，而不是一直「加载中」
-            val emptyText = if (FFRepository.lastFailed(context)) {
-                "加载失败，请检查网络后点刷新"
+            // 逐行渲染（静态 RemoteViews，不依赖 ListView，任何启动器都能显示）
+            rv.removeAllViews(R.id.widget_rows)
+            val rows = buildRows(events)
+            if (rows.isEmpty()) {
+                val empty = RemoteViews(pkg, R.layout.widget_empty_row)
+                empty.setTextViewText(R.id.empty_text, context.getString(R.string.widget_empty))
+                rv.addView(R.id.widget_rows, empty)
             } else {
-                context.getString(R.string.widget_empty)
+                for (row in rows) {
+                    val rowRv = when (row) {
+                        is Row.Header -> {
+                            val r = RemoteViews(pkg, R.layout.widget_header)
+                            r.setTextViewText(R.id.header_text, row.label)
+                            r
+                        }
+                        is Row.Item -> {
+                            val e = row.e
+                            val r = RemoteViews(pkg, R.layout.widget_item)
+                            r.setTextViewText(
+                                R.id.item_time,
+                                if (e.impact == "Holiday") "全天" else TimeUtils.toET(e.dateIso)
+                            )
+                            r.setTextViewText(R.id.item_country, country3(e.country))
+                            r.setTextViewText(R.id.item_title, e.title)
+                            val color = if (e.impact == "Holiday") R.color.holiday else R.color.high
+                            r.setInt(R.id.item_bar, "setBackgroundResource", color)
+                            r
+                        }
+                    }
+                    rv.addView(R.id.widget_rows, rowRv)
+                }
             }
-            rv.setTextViewText(R.id.widget_empty, emptyText)
 
             mgr.updateAppWidget(id, rv)
-            mgr.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
         }
 
-        // 每小时刷新一次（ForexFactory 限制每 IP 每 5 分钟最多 2 次请求）
         fun scheduleRefresh(context: Context) {
             val req = PeriodicWorkRequestBuilder<CalendarWorker>(1, TimeUnit.HOURS)
                 .setConstraints(
