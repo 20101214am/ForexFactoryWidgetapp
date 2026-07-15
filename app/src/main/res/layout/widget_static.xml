@@ -4,18 +4,18 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@color/widget_bg"
-    android:padding="8dp">
+    android:padding="6dp">
 
     <TextView
         android:id="@+id/widget_banner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center"
-        android:padding="4dp"
+        android:padding="3dp"
         android:background="@color/banner_bg"
         android:textColor="@color/high"
         android:textStyle="bold"
-        android:textSize="19sp"
+        android:textSize="18sp"
         android:visibility="gone" />
 
     <LinearLayout
@@ -31,17 +31,17 @@
             android:layout_weight="1"
             android:text="@string/widget_title"
             android:textColor="@color/widget_text"
-            android:textSize="17sp"
+            android:textSize="15sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_refresh"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:padding="4dp"
+            android:padding="3dp"
             android:text="@string/refresh"
             android:textColor="@color/high"
-            android:textSize="15sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 
@@ -50,17 +50,17 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textColor="@color/widget_sub"
-        android:textSize="12sp" />
+        android:textSize="11sp" />
 
     <!-- 全部内容用单个 TextView 渲染：不依赖 addView 嵌套，任何启动器都能稳定显示 -->
     <TextView
         android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="2dp"
         android:textColor="@color/widget_text"
-        android:textSize="14sp"
-        android:lineSpacingExtra="3dp"
+        android:textSize="12sp"
+        android:lineSpacingExtra="1dp"
         android:scrollHorizontally="false" />
 
 </LinearLayout>

@@ -49,12 +49,13 @@ class FFWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "com.ffwidget.app.ACTION_REFRESH"
         private const val MAX_ROWS = 80
+        private const val MORE_HINT_THRESHOLD = 15
 
         private val MAJOR_KEYWORDS = listOf(
             "cpi", "nfp", "nonfarm", "non-farm", "fomc", "federal open"
         )
 
-        private val COUNTRY3 = mapOf(
+        val COUNTRY3 = mapOf(
             "US" to "USA", "CA" to "CAD", "EU" to "EUR",
             "GB" to "GBR", "FR" to "FRA", "DE" to "DEU", "JP" to "JPN",
             "AU" to "AUS", "CN" to "CHN", "CH" to "CHE", "IT" to "ITA",
@@ -64,6 +65,9 @@ class FFWidgetProvider : AppWidgetProvider() {
         )
 
         private fun country3(c: String): String = COUNTRY3[c.uppercase()] ?: c.uppercase()
+
+        // 对外暴露给 MainActivity 用
+        fun country3Public(c: String): String = country3(c)
 
         private fun hasMajorToday(events: List<CalEvent>): Boolean {
             val today = TimeUtils.todayETKey()
@@ -83,7 +87,7 @@ class FFWidgetProvider : AppWidgetProvider() {
                 var count = 0
                 for (e in sorted) {
                     if (count >= MAX_ROWS) {
-                        sb.append("\n… 还有更多，请把小部件拉高")
+                        sb.append("\n… 更多，点击小部件看完整")
                         break
                     }
                     val day = TimeUtils.dayKey(e.dateIso)
@@ -92,12 +96,16 @@ class FFWidgetProvider : AppWidgetProvider() {
                         lastDay = day
                     }
                     val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                    val tag = if (e.impact == "Holiday") "假期" else "●"
+                    val tag = if (e.impact == "Holiday") "假期" else "红新"
                     sb.append("  ").append(time).append("  ").append(country3(e.country))
                         .append("  [").append(tag).append("] ").append(e.title).append("\n")
                     count++
                 }
-                sb.toString().trimEnd()
+                val base = sb.toString().trimEnd()
+                // 如果条目很多，在末尾提示点击看完整
+                if (events.size > MORE_HINT_THRESHOLD && !base.endsWith("完整")) {
+                    base + "\n… 点击小部件看完整"
+                } else base
             } catch (e: Exception) {
                 "数据解析异常: ${e.message}"
             }
@@ -147,6 +155,14 @@ class FFWidgetProvider : AppWidgetProvider() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             rv.setOnClickPendingIntent(R.id.widget_refresh, refreshPi)
+
+            // 点击小部件主体打开完整日历页（内容显示不全时可用）
+            val openApp = Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
+            val openPi = PendingIntent.getActivity(
+                context, 1, openApp,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            rv.setOnClickPendingIntent(R.id.widget_content, openPi)
 
             // 副标题：数据来源 / 更新时间
             val src = FFRepository.source(context)
