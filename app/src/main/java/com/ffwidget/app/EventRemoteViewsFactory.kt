@@ -38,11 +38,7 @@ class EventRemoteViewsFactory(
             FFRepository.ensureBaseline(ctx)
         }
         buildRows(FFRepository.loadCached(ctx))
-        // 后台异步刷新网络数据（不阻塞首次渲染；完成后会重新通知重建）
-        Thread {
-            FFRepository.refresh(ctx)
-            FFWidgetProvider.updateAll(ctx)
-        }.start()
+        // 网络刷新交由 WorkManager（首次 + 每小时）负责，避免在此递归触发刷新循环
     }
 
     private fun buildRows(events: List<CalEvent>) {
