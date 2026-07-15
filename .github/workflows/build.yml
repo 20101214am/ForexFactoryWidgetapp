@@ -4,6 +4,8 @@ on:
   push:
     branches: [ "main", "master" ]
   workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # 每周一 06:00 UTC（北京约 14:00）自动重建，内置最新一周数据
 
 jobs:
   build:
@@ -32,6 +34,11 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
+
+      - name: Bake fresh calendar into APK (offline fallback)
+        run: |
+          curl -fsSL "https://nfs.faireconomy.media/ff_calendar_thisweek.json" -o app/src/main/assets/ff_data.json || echo "keep committed fallback data"
+          cp app/src/main/assets/ff_data.json ff_data.json || true
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace > build.log 2>&1

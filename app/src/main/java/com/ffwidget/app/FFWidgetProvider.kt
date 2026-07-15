@@ -100,7 +100,9 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_refresh, refreshPi)
 
-            rv.setTextViewText(R.id.widget_sub, TimeUtils.updatedAgo(FFRepository.lastUpdated(context)))
+            val src = FFRepository.source(context)
+            val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
+            rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
 
             // 空状态文案：从未成功拉取过就提示网络问题，而不是一直「加载中」
             val emptyText = if (FFRepository.lastFailed(context)) {

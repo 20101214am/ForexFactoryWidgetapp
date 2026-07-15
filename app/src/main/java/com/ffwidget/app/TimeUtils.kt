@@ -37,6 +37,9 @@ object TimeUtils {
         }
     }
 
+    // 供 FFRepository 排序使用：统一解析（自动处理 -04:00 等带冒号时区）
+    fun toDate(iso: String): Date? = parse(iso)
+
     fun toET(iso: String): String {
         val d = parse(iso)
         return if (d == null) "" else timeFmt.format(d)
