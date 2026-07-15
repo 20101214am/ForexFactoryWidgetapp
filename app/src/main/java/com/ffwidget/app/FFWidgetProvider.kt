@@ -102,6 +102,14 @@ class FFWidgetProvider : AppWidgetProvider() {
 
             rv.setTextViewText(R.id.widget_sub, TimeUtils.updatedAgo(FFRepository.lastUpdated(context)))
 
+            // 空状态文案：从未成功拉取过就提示网络问题，而不是一直「加载中」
+            val emptyText = if (FFRepository.lastFailed(context)) {
+                "加载失败，请检查网络后点刷新"
+            } else {
+                context.getString(R.string.widget_empty)
+            }
+            rv.setTextViewText(R.id.widget_empty, emptyText)
+
             mgr.updateAppWidget(id, rv)
             mgr.notifyAppWidgetViewDataChanged(id, R.id.widget_list)
         }

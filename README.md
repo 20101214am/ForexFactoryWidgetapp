@@ -15,6 +15,11 @@ https://nfs.faireconomy.media/ff_calendar_thisweek.json
 
 注意：ForexFactory 限制每 IP 每 5 分钟最多 2 次请求。组件设为**每小时自动刷新一次**，并带手动"刷新"按钮，避免被封。
 
+### 国内网络兜底（镜像）
+ForexFactory 的 CDN 在国内手机常被墙/超时。组件拉取逻辑为：**先试主源，失败自动改用 GitHub 镜像** `ff_data.json`（由 `.github/workflows/update-data.yml` 在每次 push 和每周一自动抓取提交）。若主源与镜像都失败，列表会显示「加载失败，请检查网络后点刷新」，而不是永远「加载中」。
+
+列表在缓存为空时会**自己直接拉取一次**，不依赖后台定时任务，可绕过部分国产 ROM 对后台网络的限制。
+
 ## 显示规则
 
 - 只显示本周（端点本身即本周数据，再加客户端按时间排序）

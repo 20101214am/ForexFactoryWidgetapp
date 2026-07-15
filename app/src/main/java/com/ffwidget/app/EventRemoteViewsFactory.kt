@@ -33,6 +33,11 @@ class EventRemoteViewsFactory(
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
+        // 缓存为空时直接拉取一次，避免完全依赖 WorkManager 后台任务
+        // （部分国产 ROM 会限制后台网络，导致小组件一直停在「加载中」）
+        if (FFRepository.loadCached(ctx).isEmpty()) {
+            FFRepository.refresh(ctx)
+        }
         val events = FFRepository.loadCached(ctx)
         val sorted = events.sortedBy { it.dateIso }
         val out = mutableListOf<Row>()

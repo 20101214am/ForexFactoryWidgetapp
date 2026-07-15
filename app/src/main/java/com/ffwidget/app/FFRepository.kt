@@ -12,16 +12,24 @@ import java.util.Locale
 
 object FFRepository {
 
-    // ForexFactory 官方每周导出端点（已限定本周）
+    // ForexFactory 官方每周导出端点（已限定本周）。主数据源。
     private const val ENDPOINT = "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+    // 镜像兜底：数据每周由 GitHub Actions 抓取并提交到仓库，国内手机通常能稳定访问。
+    // 若你的仓库名/分支不同，改这一行即可。
+    private const val MIRROR =
+        "https://raw.githubusercontent.com/20101214am/ForexFactoryWidgetapp/main/ff_data.json"
+
     private const val PREFS = "ff_cache"
     private const val KEY_EVENTS = "events_json"
     private const val KEY_UPDATED = "updated_ts"
+    private const val KEY_STATUS = "fetch_status"   // ok / fail
 
     // 拉取 -> 解析 -> 仅保留 High + Holiday -> 按时间排序 -> 写入缓存
+    // 先试主源，失败再试镜像。
     fun refresh(context: Context): Boolean {
+        val raw = download() ?: return false
         return try {
-            val raw = download()
             val events = parse(raw)
             val arr = JSONArray()
             for (e in events) {
@@ -37,19 +45,35 @@ object FFRepository {
             prefs(context).edit().apply {
                 putString(KEY_EVENTS, arr.toString())
                 putLong(KEY_UPDATED, System.currentTimeMillis())
+                putString(KEY_STATUS, "ok")
                 apply()
             }
             true
         } catch (e: Exception) {
-            Log.e("FFRepo", "refresh failed: ${e.message}")
+            Log.e("FFRepo", "parse failed: ${e.message}")
+            prefs(context).edit().putString(KEY_STATUS, "fail").apply()
             false
         }
     }
 
-    private fun download(): String {
-        val conn = URL(ENDPOINT).openConnection() as HttpURLConnection
-        conn.connectTimeout = 15000
-        conn.readTimeout = 15000
+    // 返回首个成功拿到的原始 JSON；全部失败返回 null
+    private fun download(): String? {
+        val errors = mutableListOf<String>()
+        for (url in listOf(ENDPOINT, MIRROR)) {
+            try {
+                return fetchFrom(url)
+            } catch (e: Exception) {
+                errors.add("$url -> ${e.message}")
+            }
+        }
+        Log.e("FFRepo", "all endpoints failed: ${errors.joinToString(" | ")}")
+        return null
+    }
+
+    private fun fetchFrom(urlStr: String): String {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
         conn.requestMethod = "GET"
         conn.setRequestProperty("User-Agent", "Mozilla/5.0")
         try {
@@ -104,6 +128,10 @@ object FFRepository {
     }
 
     fun lastUpdated(context: Context): Long = prefs(context).getLong(KEY_UPDATED, 0)
+
+    // 是否曾尝试拉取但失败（用于显示「加载失败」而不是一直「加载中」）
+    fun lastFailed(context: Context): Boolean =
+        prefs(context).getString(KEY_STATUS, "") == "fail" && lastUpdated(context) == 0L
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
