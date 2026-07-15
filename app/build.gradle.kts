@@ -11,13 +11,27 @@ android {
         applicationId = "com.ffwidget.app"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("ff-release-key.p12")
+            storePassword = "ffwidget"
+            keyAlias = "ffkey"
+            keyPassword = "ffwidget"
+            storeType = "PKCS12"
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

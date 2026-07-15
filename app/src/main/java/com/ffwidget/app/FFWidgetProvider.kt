@@ -34,10 +34,16 @@ class FFWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_REFRESH) {
-            val req = OneTimeWorkRequestBuilder<CalendarWorker>().build()
-            WorkManager.getInstance(context)
-                .enqueueUniqueWork("ff-refresh", ExistingWorkPolicy.REPLACE, req)
+        when (intent.action) {
+            ACTION_REFRESH -> {
+                val req = OneTimeWorkRequestBuilder<CalendarWorker>().build()
+                WorkManager.getInstance(context)
+                    .enqueueUniqueWork("ff-refresh", ExistingWorkPolicy.REPLACE, req)
+            }
+            // 覆盖安装 / 升级后，自动刷新桌面上已有的小部件（避免旧「加载中」残留）
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                updateAll(context)
+            }
         }
     }
 
