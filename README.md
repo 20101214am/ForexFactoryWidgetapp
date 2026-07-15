@@ -35,8 +35,9 @@ https://nfs.faireconomy.media/ff_calendar_thisweek.json
 2. 打开本项目：`File -> Open -> 选择 ForexFactoryWidget 文件夹`。若提示缺少 Gradle wrapper，允许 Android Studio 自动创建即可。
 3. 手机：设置 -> 关于手机 -> 连点"版本号"7 次开启开发者模式 -> 开启"USB 调试"，用数据线连电脑并允许授权。
 4. Android Studio 顶部点绿色三角 `Run`（或 `Build -> Build APK(s)` 拿到 apk 后传到手机安装）。
-5. 手机桌面长按空白处 -> "窗口小工具" -> 找到 **FF 经济日历** -> 拖到桌面。
-6. 首次会显示"加载中"，联网后约几秒出现本周红字+假期列表。
+5. 安装后**先点一次 App 图标打开它**（这一步会激活应用，否则小部件可能不出现在列表里）。App 里点"打开 ForexFactory 日历"按钮可跳官网。
+6. 回到手机桌面长按空白处 -> "窗口小工具" -> 找到 **FF 经济日历** -> 拖到桌面。
+7. 首次会显示"加载中"，联网后约几秒出现本周红字+假期列表。
 
 ## 自定义
 

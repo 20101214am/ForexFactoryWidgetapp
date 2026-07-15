@@ -5,4 +5,6 @@
     <string name="widget_empty">加载中…\n首次需联网拉取</string>
     <string name="refresh">刷新</string>
     <string name="banner_major">今日有重大新闻，禁止交易！！！</string>
+    <string name="launch_hint">本应用是桌面小组件。\n请在手机桌面长按空白处 → 小部件 → 找到「FF 经济日历」拖到桌面。\n点击下方按钮可打开 ForexFactory 经济日历网页。</string>
+    <string name="open_calendar">打开 ForexFactory 日历</string>
 </resources>
