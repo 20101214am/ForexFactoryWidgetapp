@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.text.SpannableStringBuilder
 import android.widget.Button
 import android.widget.TextView
 
@@ -36,9 +37,9 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun buildFullText(events: List<CalEvent>): String {
+    private fun buildFullText(events: List<CalEvent>): CharSequence {
         val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
-        val sb = StringBuilder()
+        val sb = SpannableStringBuilder()
         var lastDay = ""
         for (e in sorted) {
             val day = TimeUtils.dayKey(e.dateIso)
@@ -47,12 +48,14 @@ class MainActivity : Activity() {
                 lastDay = day
             }
             val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-            val dot = if (e.impact == "Holiday") "[⚪]" else "[🔴]"
-            sb.append("  ").append(time).append("  ").append(country3(e.country))
-                .append("  ").append(dot).append(" ").append(e.title).append("\n")
+            val b = SpannableStringBuilder()
+            b.append("  ").append(time).append("  ").append(country3(e.country)).append("  [")
+            b.append(FFWidgetProvider.rowDot(e))
+            b.append("] ").append(e.title).append("\n")
+            sb.append(b)
         }
         sb.append("\n").append(getString(R.string.footer_text))
-        return sb.toString().trimEnd()
+        return sb
     }
 
     private fun country3(c: String): String = FFWidgetProvider.country3Public(c)

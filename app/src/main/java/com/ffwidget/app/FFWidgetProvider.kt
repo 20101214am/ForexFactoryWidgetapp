@@ -13,6 +13,11 @@ import android.provider.AlarmClock.EXTRA_MESSAGE
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
+import android.graphics.Color
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -41,11 +46,15 @@ class FFWidgetProvider : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
-            ACTION_REFRESH -> WorkManager.getInstance(context)
-                .enqueueUniqueWork(
-                    "ff-refresh", ExistingWorkPolicy.REPLACE,
-                    OneTimeWorkRequestBuilder<CalendarWorker>().build()
-                )
+            ACTION_REFRESH -> {
+                // 立即给反馈：先把状态改成「正在更新…」，避免点击后毫无反应
+                updateAll(context, refreshing = true)
+                WorkManager.getInstance(context)
+                    .enqueueUniqueWork(
+                        "ff-refresh", ExistingWorkPolicy.REPLACE,
+                        OneTimeWorkRequestBuilder<CalendarWorker>().build()
+                    )
+            }
             // 覆盖安装 / 升级后，自动刷新桌面上已有的小部件（避免旧「加载中」残留）
             Intent.ACTION_MY_PACKAGE_REPLACED -> updateAll(context)
         }
@@ -93,15 +102,23 @@ class FFWidgetProvider : AppWidgetProvider() {
             return isFomc && FOMC_RATE_DECISION.any { title.contains(it, ignoreCase = true) }
         }
 
-        fun updateAll(context: Context) {
-            val mgr = AppWidgetManager.getInstance(context)
-            val ids = mgr.getAppWidgetIds(ComponentName(context, FFWidgetProvider::class.java))
-            ids.forEach { updateWidget(context, mgr, it) }
+        // 行内圆点标记：红色新闻=红点，假期=白点（小实心圆 ●，与文字同号，比 emoji 明显更小）
+        internal fun rowDot(e: CalEvent): CharSequence {
+            val color = if (e.impact == "Holiday") Color.parseColor("#E6EDF3") else Color.parseColor("#E53935")
+            val s = SpannableString("●")
+            s.setSpan(ForegroundColorSpan(color), 0, 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            return s
         }
 
-        fun updateWidget(context: Context, mgr: AppWidgetManager, id: Int) {
+        fun updateAll(context: Context, refreshing: Boolean = false) {
+            val mgr = AppWidgetManager.getInstance(context)
+            val ids = mgr.getAppWidgetIds(ComponentName(context, FFWidgetProvider::class.java))
+            ids.forEach { updateWidget(context, mgr, it, refreshing) }
+        }
+
+        fun updateWidget(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean = false) {
             try {
-                updateWidgetInner(context, mgr, id)
+                updateWidgetInner(context, mgr, id, refreshing)
             } catch (e: Exception) {
                 // 任何异常都降级为可读错误，绝不让系统弹出「加载出现问题」
                 try {
@@ -111,7 +128,7 @@ class FFWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        private fun updateWidgetInner(context: Context, mgr: AppWidgetManager, id: Int) {
+        private fun updateWidgetInner(context: Context, mgr: AppWidgetManager, id: Int, refreshing: Boolean = false) {
             val pkg = context.packageName
             val rv = RemoteViews(pkg, R.layout.widget_static)
 
@@ -146,10 +163,15 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_root, openPi)
 
-            // 副标题：数据来源 / 更新时间
-            val src = FFRepository.source(context)
-            val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
-            rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
+            // 副标题：正在刷新时显示「正在更新…」；否则显示数据来源 / 更新时间
+            val subText = if (refreshing) {
+                context.getString(R.string.refreshing)
+            } else {
+                val src = FFRepository.source(context)
+                val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
+                if (src == "offline") "$ago · 离线内置" else ago
+            }
+            rv.setTextViewText(R.id.widget_sub, subText)
 
             // 页脚：本周红色新闻与假期汇总说明（逐行与单 TextView 兜底两种路径都会显示）
             rv.setViewVisibility(R.id.widget_footer, View.VISIBLE)
@@ -196,10 +218,13 @@ class FFWidgetProvider : AppWidgetProvider() {
                 }
                 val row = RemoteViews(pkg, R.layout.widget_row)
                 val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                // 类型标记：假期=[⚪] 白色圆点，红色新闻=[🔴] 红色圆点（括号圆点放行中间，替代旧 [假期]/[红新]）
-                val dot = if (e.impact == "Holiday") "⚪" else "🔴"
+                // 类型标记：[●] 红色新闻=红点，假期=白点（小实心圆，与文字同号）
                 row.setViewVisibility(R.id.row_dot, View.GONE) // 不再使用左侧独立圆点图标
-                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  [$dot] ${e.title}")
+                val b = SpannableStringBuilder()
+                b.append("  $time  ${country3(e.country)}  [")
+                b.append(rowDot(e))
+                b.append("] ${e.title}")
+                row.setTextViewText(R.id.row_text, b)
 
                 if (e.impact == "High") {
                     row.setViewVisibility(R.id.row_alarm, View.VISIBLE)
@@ -242,9 +267,11 @@ class FFWidgetProvider : AppWidgetProvider() {
                         lastDay = day
                     }
                     val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                    val dot = if (e.impact == "Holiday") "[⚪]" else "[🔴]"
-                    sb.append("  ").append(time).append("  ").append(country3(e.country))
-                        .append("  ").append(dot).append(" ").append(e.title).append("\n")
+                    val b = SpannableStringBuilder()
+                    b.append("  ").append(time).append("  ").append(country3(e.country)).append("  [")
+                    b.append(rowDot(e))
+                    b.append("] ").append(e.title).append("\n")
+                    sb.append(b)
                     count++
                 }
                 sb.toString().trimEnd()
