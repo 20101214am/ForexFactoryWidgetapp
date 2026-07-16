@@ -32,17 +32,6 @@ ForexFactory 的 CDN 在国内手机常被墙/超时。组件拉取逻辑为：*
 - 国家代码显示为三字母：`US->USA`、`CA->CAD`，其余用标准 ISO alpha-3（FRA / GBR / DEU 等）
 - 点击任意条目 -> 打开 forexfactory.com 日历页
 
-## 构建与安装（一次性的事）
-
-需要一台装了 Android Studio 的电脑。
-
-1. 电脑安装 [Android Studio](https://developer.android.com/studio)（含 Android SDK）。
-2. 打开本项目：`File -> Open -> 选择 ForexFactoryWidget 文件夹`。若提示缺少 Gradle wrapper，允许 Android Studio 自动创建即可。
-3. 手机：设置 -> 关于手机 -> 连点"版本号"7 次开启开发者模式 -> 开启"USB 调试"，用数据线连电脑并允许授权。
-4. Android Studio 顶部点绿色三角 `Run`（或 `Build -> Build APK(s)` 拿到 apk 后传到手机安装）。
-5. 安装后**先点一次 App 图标打开它**（这一步会激活应用，否则小部件可能不出现在列表里）。App 里点"打开 ForexFactory 日历"按钮可跳官网。
-6. 回到手机桌面长按空白处 -> "窗口小工具" -> 找到 **FF 经济日历** -> 拖到桌面。
-7. 首次会显示"加载中"，联网后约几秒出现本周红字+假期列表。
 
 ## 自定义
 
