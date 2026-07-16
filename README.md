@@ -74,8 +74,4 @@ ForexFactoryWidget/
 - 所有时间格式化固定使用 `America/New_York`，与 ForexFactory 官网一致。
 - 假期在 JSON 中仍带时间戳，渲染时替换为「全天」。
 
-## 没有电脑编译？
 
-如果你有 GitHub 账号，我可以再补一个 GitHub Actions 工作流：推送代码后在云端自动编译出 APK，你直接下载安装，无需本地 Android Studio。需要的话告诉我。
-
-如果你有 GitHub 账号，我可以再补一个 GitHub Actions 工作流：推送代码后在云端自动编译出 APK，你直接下载安装，无需本地 Android Studio。需要的话告诉我。
