@@ -73,4 +73,3 @@ ForexFactoryWidget/
 - 数据源 `date` 字段带 `-04:00` 这类时区偏移，为了兼容 Android 6（API 23），`TimeUtils` 先把冒号去掉再用 `Z` 格式解析，而非直接用 `X`/`XXX`。
 - 所有时间格式化固定使用 `America/New_York`，与 ForexFactory 官网一致。
 - 假期在 JSON 中仍带时间戳，渲染时替换为「全天」。
-
