@@ -1,11 +1,16 @@
 package com.ffwidget.app
 
+import android.app.AlarmClock
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.AlarmClock.EXTRA_HOUR
+import android.provider.AlarmClock.EXTRA_MINUTES
+import android.provider.AlarmClock.EXTRA_MESSAGE
+import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import androidx.work.Constraints
@@ -49,7 +54,6 @@ class FFWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "com.ffwidget.app.ACTION_REFRESH"
         private const val MAX_ROWS = 80
-        private const val MORE_HINT_THRESHOLD = 15
 
         private val MAJOR_KEYWORDS = listOf(
             "cpi", "nfp", "nonfarm", "non-farm", "fomc", "federal open"
@@ -74,40 +78,6 @@ class FFWidgetProvider : AppWidgetProvider() {
             return events.any { e ->
                 TimeUtils.dayKey(e.dateIso) == today &&
                         MAJOR_KEYWORDS.any { kw -> e.title.contains(kw, ignoreCase = true) }
-            }
-        }
-
-        // 把所有行拼成一段带换行的文本，用单个 TextView 一次性渲染。
-        // 不使用 addView 嵌套 RemoteViews，规避国产 ROM / 旧版本的兼容性崩溃。
-        private fun buildText(events: List<CalEvent>): String {
-            return try {
-                val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
-                val sb = StringBuilder()
-                var lastDay = ""
-                var count = 0
-                for (e in sorted) {
-                    if (count >= MAX_ROWS) {
-                        sb.append("\n… 更多，点击小部件看完整")
-                        break
-                    }
-                    val day = TimeUtils.dayKey(e.dateIso)
-                    if (day.isNotEmpty() && day != lastDay) {
-                        sb.append("\n").append(TimeUtils.dayLabel(e.dateIso)).append("\n")
-                        lastDay = day
-                    }
-                    val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                    val tag = if (e.impact == "Holiday") "假期" else "红新"
-                    sb.append("  ").append(time).append("  ").append(country3(e.country))
-                        .append("  [").append(tag).append("] ").append(e.title).append("\n")
-                    count++
-                }
-                val base = sb.toString().trimEnd()
-                // 如果条目很多，在末尾提示点击看完整
-                if (events.size > MORE_HINT_THRESHOLD && !base.endsWith("完整")) {
-                    base + "\n… 点击小部件看完整"
-                } else base
-            } catch (e: Exception) {
-                "数据解析异常: ${e.message}"
             }
         }
 
@@ -156,24 +126,111 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_refresh, refreshPi)
 
-            // 点击小部件主体打开完整日历页（内容显示不全时可用）
+            // 点击小部件任意区域打开完整日历页（内容显示不全时可用）
             val openApp = Intent(context, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK }
             val openPi = PendingIntent.getActivity(
                 context, 1, openApp,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            rv.setOnClickPendingIntent(R.id.widget_content, openPi)
+            rv.setOnClickPendingIntent(R.id.widget_root, openPi)
 
             // 副标题：数据来源 / 更新时间
             val src = FFRepository.source(context)
             val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
             rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
 
-            // 逐行文本（单 TextView）
-            val text = if (events.isEmpty()) context.getString(R.string.widget_empty) else buildText(events)
-            rv.setTextViewText(R.id.widget_content, text)
+            // 正常路径：逐行渲染（红色新闻行带可点击闹铃图标）
+            try {
+                buildRows(context, pkg, rv, events, openPi)
+                rv.setViewVisibility(R.id.widget_content, View.GONE)
+            } catch (e: Exception) {
+                // 逐行失败则降级为单 TextView（兼容个别 ROM 对 addView 的异常）
+                rv.setViewVisibility(R.id.widget_list, View.GONE)
+                rv.setViewVisibility(R.id.widget_content, View.VISIBLE)
+                val text = if (events.isEmpty()) context.getString(R.string.widget_empty) else buildText(events)
+                rv.setTextViewText(R.id.widget_content, text)
+            }
 
             mgr.updateAppWidget(id, rv)
+        }
+
+        private fun buildRows(
+            context: Context,
+            pkg: String,
+            rv: RemoteViews,
+            events: List<CalEvent>,
+            openPi: PendingIntent
+        ) {
+            val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
+            var lastDay = ""
+            var count = 0
+            var alarmReq = 1000 // 每行闹铃 PendingIntent 必须唯一，否则会互相覆盖
+            for (e in sorted) {
+                if (count >= MAX_ROWS) break
+                val day = TimeUtils.dayKey(e.dateIso)
+                if (day.isNotEmpty() && day != lastDay) {
+                    val h = RemoteViews(pkg, R.layout.widget_row)
+                    h.setTextViewText(R.id.row_text, TimeUtils.dayLabel(e.dateIso))
+                    h.setTextViewTextSize(R.id.row_text, TypedValue.COMPLEX_UNIT_SP, 13f)
+                    h.setViewVisibility(R.id.row_alarm, View.GONE)
+                    rv.addView(R.id.widget_list, h)
+                    lastDay = day
+                }
+                val row = RemoteViews(pkg, R.layout.widget_row)
+                val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
+                val tag = if (e.impact == "Holiday") "假期" else "红新"
+                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  [$tag] ${e.title}")
+
+                if (e.impact == "High") {
+                    row.setViewVisibility(R.id.row_alarm, View.VISIBLE)
+                    val (h, m) = TimeUtils.toLocalHM(e.dateIso)
+                    val alarmIntent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+                        putExtra(EXTRA_HOUR, h)
+                        putExtra(EXTRA_MINUTES, m)
+                        putExtra(EXTRA_MESSAGE, "FF: ${e.title}")
+                    }
+                    val alarmPi = PendingIntent.getActivity(
+                        context, alarmReq++, alarmIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    row.setOnClickPendingIntent(R.id.row_alarm, alarmPi)
+                } else {
+                    row.setViewVisibility(R.id.row_alarm, View.GONE)
+                }
+                // 点击行内文字打开完整日历（闹铃图标点击优先于它）
+                row.setOnClickPendingIntent(R.id.row_root, openPi)
+                rv.addView(R.id.widget_list, row)
+                count++
+            }
+        }
+
+        // 单 TextView 兜底渲染（逐行路径异常时启用）
+        private fun buildText(events: List<CalEvent>): String {
+            return try {
+                val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
+                val sb = StringBuilder()
+                var lastDay = ""
+                var count = 0
+                for (e in sorted) {
+                    if (count >= MAX_ROWS) {
+                        sb.append("\n… 更多，点击小部件看完整")
+                        break
+                    }
+                    val day = TimeUtils.dayKey(e.dateIso)
+                    if (day.isNotEmpty() && day != lastDay) {
+                        sb.append("\n").append(TimeUtils.dayLabel(e.dateIso)).append("\n")
+                        lastDay = day
+                    }
+                    val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
+                    val tag = if (e.impact == "Holiday") "假期" else "红新"
+                    sb.append("  ").append(time).append("  ").append(country3(e.country))
+                        .append("  [").append(tag).append("] ").append(e.title).append("\n")
+                    count++
+                }
+                sb.toString().trimEnd()
+            } catch (e: Exception) {
+                "数据解析异常: ${e.message}"
+            }
         }
 
         private fun showError(context: Context, mgr: AppWidgetManager, id: Int, msg: String) {
@@ -183,6 +240,8 @@ class FFWidgetProvider : AppWidgetProvider() {
             rv.setViewVisibility(R.id.widget_banner, View.VISIBLE)
             rv.setTextViewText(R.id.widget_banner, "加载失败")
             rv.setTextViewText(R.id.widget_sub, msg.take(80))
+            rv.setViewVisibility(R.id.widget_list, View.GONE)
+            rv.setViewVisibility(R.id.widget_content, View.VISIBLE)
             rv.setTextViewText(
                 R.id.widget_content,
                 "请长按删除本小部件，再从桌面「小部件」列表重新添加一次。"

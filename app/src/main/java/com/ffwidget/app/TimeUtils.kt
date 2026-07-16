@@ -55,6 +55,14 @@ object TimeUtils {
         return if (d == null) "" else dayLabelFmt.format(d)
     }
 
+    // 跳闹钟用：把美东时间换算成手机本地时区的小时/分钟（避免提醒时刻算错）
+    fun toLocalHM(iso: String): Pair<Int, Int> {
+        val d = parse(iso) ?: return Pair(0, 0)
+        val cal = Calendar.getInstance() // 默认即手机本地时区
+        cal.time = d
+        return Pair(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
+    }
+
     // 今天（美国东部时区）的日期键 yyyy-MM-dd，用于判断「今日是否有重大新闻」
     fun todayETKey(): String {
         val cal = Calendar.getInstance(ET)
