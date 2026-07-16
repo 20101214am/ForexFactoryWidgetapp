@@ -55,8 +55,13 @@ class FFWidgetProvider : AppWidgetProvider() {
         const val ACTION_REFRESH = "com.ffwidget.app.ACTION_REFRESH"
         private const val MAX_ROWS = 80
 
+        // 重大红色新闻关键词（CPI / NFP 等）。FOMC 不再整体算重大，需单独判断利率决议。
         private val MAJOR_KEYWORDS = listOf(
-            "cpi", "nfp", "nonfarm", "non-farm", "fomc", "federal open"
+            "cpi", "nfp", "nonfarm", "non-farm"
+        )
+        // FOMC 利率决议才视为重大红色新闻；其余 FOMC（讲话 / 纪要 / 证词等）只是普通红色新闻
+        private val FOMC_RATE_DECISION = listOf(
+            "rate decision", "interest rate decision", "利率决议", "联邦基金利率"
         )
 
         val COUNTRY3 = mapOf(
@@ -76,9 +81,16 @@ class FFWidgetProvider : AppWidgetProvider() {
         private fun hasMajorToday(events: List<CalEvent>): Boolean {
             val today = TimeUtils.todayETKey()
             return events.any { e ->
-                TimeUtils.dayKey(e.dateIso) == today &&
-                        MAJOR_KEYWORDS.any { kw -> e.title.contains(kw, ignoreCase = true) }
+                TimeUtils.dayKey(e.dateIso) == today && isMajorTitle(e.title)
             }
+        }
+
+        // 是否「重大红色新闻」：CPI/NFP 直接算；FOMC 仅利率决议算，其余 FOMC 不算
+        private fun isMajorTitle(title: String): Boolean {
+            if (MAJOR_KEYWORDS.any { title.contains(it, ignoreCase = true) }) return true
+            val isFomc = title.contains("fomc", ignoreCase = true) ||
+                    title.contains("federal open", ignoreCase = true)
+            return isFomc && FOMC_RATE_DECISION.any { title.contains(it, ignoreCase = true) }
         }
 
         fun updateAll(context: Context) {
@@ -178,13 +190,21 @@ class FFWidgetProvider : AppWidgetProvider() {
                     h.setTextViewText(R.id.row_text, TimeUtils.dayLabel(e.dateIso))
                     h.setTextViewTextSize(R.id.row_text, TypedValue.COMPLEX_UNIT_SP, 13f)
                     h.setViewVisibility(R.id.row_alarm, View.GONE)
+                    h.setViewVisibility(R.id.row_dot, View.GONE)
                     rv.addView(R.id.widget_list, h)
                     lastDay = day
                 }
                 val row = RemoteViews(pkg, R.layout.widget_row)
                 val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                val tag = if (e.impact == "Holiday") "假期" else "红新"
-                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  [$tag] ${e.title}")
+                // 类型圆点：假期=白色圆点，红色新闻=红色圆点（替代原来的 [假期]/[红新] 文字）
+                if (e.impact == "Holiday") {
+                    row.setViewVisibility(R.id.row_dot, View.VISIBLE)
+                    row.setImageViewResource(R.id.row_dot, R.drawable.dot_white)
+                } else {
+                    row.setViewVisibility(R.id.row_dot, View.VISIBLE)
+                    row.setImageViewResource(R.id.row_dot, R.drawable.dot_red)
+                }
+                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  ${e.title}")
 
                 if (e.impact == "High") {
                     row.setViewVisibility(R.id.row_alarm, View.VISIBLE)
@@ -227,9 +247,9 @@ class FFWidgetProvider : AppWidgetProvider() {
                         lastDay = day
                     }
                     val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                    val tag = if (e.impact == "Holiday") "假期" else "红新"
+                    val dot = if (e.impact == "Holiday") "⚪" else "🔴"
                     sb.append("  ").append(time).append("  ").append(country3(e.country))
-                        .append("  [").append(tag).append("] ").append(e.title).append("\n")
+                        .append("  ").append(dot).append(" ").append(e.title).append("\n")
                     count++
                 }
                 sb.toString().trimEnd()
