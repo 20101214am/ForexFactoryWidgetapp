@@ -1,6 +1,6 @@
 package com.ffwidget.app
 
-import android.app.AlarmClock
+import android.provider.AlarmClock
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
