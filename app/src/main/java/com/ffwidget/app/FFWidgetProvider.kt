@@ -139,6 +139,10 @@ class FFWidgetProvider : AppWidgetProvider() {
             val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
             rv.setTextViewText(R.id.widget_sub, if (src == "offline") "$ago · 离线内置" else ago)
 
+            // 页脚：本周红色新闻与假期汇总说明（逐行与单 TextView 兜底两种路径都会显示）
+            rv.setViewVisibility(R.id.widget_footer, View.VISIBLE)
+            rv.setTextViewText(R.id.widget_footer, context.getString(R.string.footer_text))
+
             // 正常路径：逐行渲染（红色新闻行带可点击闹铃图标）
             try {
                 buildRows(context, pkg, rv, events, openPi)
@@ -161,6 +165,7 @@ class FFWidgetProvider : AppWidgetProvider() {
             events: List<CalEvent>,
             openPi: PendingIntent
         ) {
+            rv.removeAllViews(R.id.widget_list) // 先清空，避免国产 ROM 叠加旧视图导致内容显示两遍
             val sorted = events.sortedBy { TimeUtils.toDate(it.dateIso)?.time ?: Long.MAX_VALUE }
             var lastDay = ""
             var count = 0
@@ -241,6 +246,7 @@ class FFWidgetProvider : AppWidgetProvider() {
             rv.setTextViewText(R.id.widget_banner, "加载失败")
             rv.setTextViewText(R.id.widget_sub, msg.take(80))
             rv.setViewVisibility(R.id.widget_list, View.GONE)
+            rv.setViewVisibility(R.id.widget_footer, View.GONE)
             rv.setViewVisibility(R.id.widget_content, View.VISIBLE)
             rv.setTextViewText(
                 R.id.widget_content,
@@ -250,7 +256,8 @@ class FFWidgetProvider : AppWidgetProvider() {
         }
 
         private fun scheduleRefresh(context: Context) {
-            val req = PeriodicWorkRequestBuilder<CalendarWorker>(1, TimeUnit.HOURS)
+            // 本周日历数据无需实时更新：每 6 小时拉取一次足够覆盖 FF 的时间修订/临时新增，省电省流量
+            val req = PeriodicWorkRequestBuilder<CalendarWorker>(6, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)

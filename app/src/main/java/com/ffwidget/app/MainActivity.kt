@@ -51,6 +51,7 @@ class MainActivity : Activity() {
             sb.append("  ").append(time).append("  ").append(country3(e.country))
                 .append("  [").append(tag).append("] ").append(e.title).append("\n")
         }
+        sb.append("\n").append(getString(R.string.footer_text))
         return sb.toString().trimEnd()
     }
 

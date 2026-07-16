@@ -60,6 +60,17 @@
         android:layout_height="wrap_content"
         android:orientation="vertical" />
 
+    <!-- 页脚：本周红色新闻与假期汇总说明 -->
+    <TextView
+        android:id="@+id/widget_footer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:gravity="center"
+        android:textColor="@color/widget_sub"
+        android:textSize="11sp"
+        android:text="@string/footer_text" />
+
     <!-- 出错 / 空数据时兜底的单个 TextView -->
     <TextView
         android:id="@+id/widget_content"
