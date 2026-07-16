@@ -13,7 +13,7 @@ https://nfs.faireconomy.media/ff_calendar_thisweek.json
 字段：`title / country / date(含时区偏移) / impact / forecast / previous`
 `impact` 取值：`High`(红字) / `Holiday`(假期) / `Medium` / `Low`，本组件只保留 High 与 Holiday。
 
-注意：ForexFactory 限制每 IP 每 5 分钟最多 2 次请求。组件设为**每小时自动刷新一次**，并带手动"刷新"按钮，避免被封。
+注意：ForexFactory 限制每 IP 每 5 分钟最多 2 次请求。组件设为**每 6 小时自动刷新一次**，并带手动"刷新"按钮，避免被封。
 
 ### 国内网络兜底（镜像）
 ForexFactory 的 CDN 在国内手机常被墙/超时。组件拉取逻辑为：**先试主源，失败自动改用 GitHub 镜像** `ff_data.json`（由 `.github/workflows/update-data.yml` 在每次 push 和每周一自动抓取提交）。若主源与镜像都失败，列表会显示「加载失败，请检查网络后点刷新」，而不是永远「加载中」。
@@ -47,7 +47,7 @@ ForexFactory 的 CDN 在国内手机常被墙/超时。组件拉取逻辑为：*
 ## 自定义
 
 - 改颜色：`app/src/main/res/values/colors.xml`（`high` 红、`holiday` 橙、`widget_bg` 背景等）。
-- 改刷新频率：`app/src/main/java/com/ffwidget/app/FFWidgetProvider.kt` 的 `scheduleRefresh`（当前 1 小时）。
+- 改刷新频率：`app/src/main/java/com/ffwidget/app/FFWidgetProvider.kt` 的 `scheduleRefresh`（当前 6 小时）。
 - 改尺寸：`app/src/main/res/xml/ff_widget_info.xml` 的 `minWidth/minHeight`。
 
 ## 目录结构
@@ -74,8 +74,3 @@ ForexFactoryWidget/
 - 所有时间格式化固定使用 `America/New_York`，与 ForexFactory 官网一致。
 - 假期在 JSON 中仍带时间戳，渲染时替换为「全天」。
 
-## 没有电脑编译？
-
-如果你有 GitHub 账号，我可以再补一个 GitHub Actions 工作流：推送代码后在云端自动编译出 APK，你直接下载安装，无需本地 Android Studio。需要的话告诉我。
-
-如果你有 GitHub 账号，我可以再补一个 GitHub Actions 工作流：推送代码后在云端自动编译出 APK，你直接下载安装，无需本地 Android Studio。需要的话告诉我。
