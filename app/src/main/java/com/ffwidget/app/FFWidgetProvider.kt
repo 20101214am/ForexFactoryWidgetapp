@@ -196,15 +196,10 @@ class FFWidgetProvider : AppWidgetProvider() {
                 }
                 val row = RemoteViews(pkg, R.layout.widget_row)
                 val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                // 类型圆点：假期=白色圆点，红色新闻=红色圆点（替代原来的 [假期]/[红新] 文字）
-                if (e.impact == "Holiday") {
-                    row.setViewVisibility(R.id.row_dot, View.VISIBLE)
-                    row.setImageViewResource(R.id.row_dot, R.drawable.dot_white)
-                } else {
-                    row.setViewVisibility(R.id.row_dot, View.VISIBLE)
-                    row.setImageViewResource(R.id.row_dot, R.drawable.dot_red)
-                }
-                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  ${e.title}")
+                // 类型标记：假期=[⚪] 白色圆点，红色新闻=[🔴] 红色圆点（括号圆点放行中间，替代旧 [假期]/[红新]）
+                val dot = if (e.impact == "Holiday") "⚪" else "🔴"
+                row.setViewVisibility(R.id.row_dot, View.GONE) // 不再使用左侧独立圆点图标
+                row.setTextViewText(R.id.row_text, "  $time  ${country3(e.country)}  [$dot] ${e.title}")
 
                 if (e.impact == "High") {
                     row.setViewVisibility(R.id.row_alarm, View.VISIBLE)
@@ -247,7 +242,7 @@ class FFWidgetProvider : AppWidgetProvider() {
                         lastDay = day
                     }
                     val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-                    val dot = if (e.impact == "Holiday") "⚪" else "🔴"
+                    val dot = if (e.impact == "Holiday") "[⚪]" else "[🔴]"
                     sb.append("  ").append(time).append("  ").append(country3(e.country))
                         .append("  ").append(dot).append(" ").append(e.title).append("\n")
                     count++

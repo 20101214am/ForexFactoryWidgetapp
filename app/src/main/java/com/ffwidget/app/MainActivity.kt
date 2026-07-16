@@ -47,7 +47,7 @@ class MainActivity : Activity() {
                 lastDay = day
             }
             val time = if (e.impact == "Holiday") "全天" else (TimeUtils.toET(e.dateIso).ifBlank { "----" })
-            val dot = if (e.impact == "Holiday") "⚪" else "🔴"
+            val dot = if (e.impact == "Holiday") "[⚪]" else "[🔴]"
             sb.append("  ").append(time).append("  ").append(country3(e.country))
                 .append("  ").append(dot).append(" ").append(e.title).append("\n")
         }
