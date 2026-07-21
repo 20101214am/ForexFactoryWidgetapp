@@ -90,16 +90,20 @@ class FFWidgetProvider : AppWidgetProvider() {
         private fun hasMajorToday(events: List<CalEvent>): Boolean {
             val today = TimeUtils.todayETKey()
             return events.any { e ->
-                TimeUtils.dayKey(e.dateIso) == today && isMajorTitle(e.title)
+                TimeUtils.dayKey(e.dateIso) == today && isMajorEvent(e)
             }
         }
 
-        // 是否「重大红色新闻」：CPI/NFP 直接算；FOMC 仅利率决议算，其余 FOMC 不算
-        private fun isMajorTitle(title: String): Boolean {
-            if (MAJOR_KEYWORDS.any { title.contains(it, ignoreCase = true) }) return true
-            val isFomc = title.contains("fomc", ignoreCase = true) ||
-                    title.contains("federal open", ignoreCase = true)
-            return isFomc && FOMC_RATE_DECISION.any { title.contains(it, ignoreCase = true) }
+        // 是否「重大红色新闻」：仅美元(USD)的 CPI / NFP / FOMC 利率决议算重大；非美、FOMC讲话/纪要等不算
+        private fun isMajorEvent(e: CalEvent): Boolean {
+            val isUsd = e.country.equals("USD", ignoreCase = true) ||
+                    e.country.equals("US", ignoreCase = true) ||
+                    e.country.equals("USA", ignoreCase = true)
+            if (!isUsd) return false
+            if (MAJOR_KEYWORDS.any { e.title.contains(it, ignoreCase = true) }) return true
+            val isFomc = e.title.contains("fomc", ignoreCase = true) ||
+                    e.title.contains("federal open", ignoreCase = true)
+            return isFomc && FOMC_RATE_DECISION.any { e.title.contains(it, ignoreCase = true) }
         }
 
         // 行内圆点标记：红色新闻=红点，假期=白点（小实心圆 ●，与文字同号，比 emoji 明显更小）

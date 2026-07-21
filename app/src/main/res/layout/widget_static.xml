@@ -13,7 +13,6 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:padding="3dp"
-        android:background="@color/banner_bg"
         android:textColor="@color/high"
         android:textStyle="bold"
         android:textSize="18sp"
