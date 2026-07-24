@@ -16,6 +16,9 @@ object TimeUtils {
     // 美国东部时区（ForexFactory 原始时区）
     private val ET = TimeZone.getTimeZone("America/New_York")
 
+    // 北京时间（UTC+8）：闹铃提醒按北京本地时间设定，不随手机系统时区变化
+    private val BJ = TimeZone.getTimeZone("Asia/Shanghai")
+
     // 条目内时间：HH:mm（美东）
     private val timeFmt = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = ET }
 
@@ -58,7 +61,7 @@ object TimeUtils {
     // 跳闹钟用：把美东时间换算成手机本地时区的小时/分钟（避免提醒时刻算错）
     fun toLocalHM(iso: String): Pair<Int, Int> {
         val d = parse(iso) ?: return Pair(0, 0)
-        val cal = Calendar.getInstance() // 默认即手机本地时区
+        val cal = Calendar.getInstance(BJ) // 按北京时间换算，提醒时刻固定为北京本地时间
         cal.time = d
         return Pair(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
     }
@@ -67,7 +70,7 @@ object TimeUtils {
     // 与 AlarmClock.EXTRA_DAYS 约定一致，用于设定「每周X」重复提醒
     fun localDayOfWeek(iso: String): Int {
         val d = parse(iso) ?: return 2
-        val cal = Calendar.getInstance() // 本地时区
+        val cal = Calendar.getInstance(BJ) // 北京时间时区
         cal.time = d
         val calDow = cal.get(Calendar.DAY_OF_WEEK) // 1=周日..7=周六
         return ((calDow - 2 + 7) % 7) + 1 // 转为 1=周一..7=周日
