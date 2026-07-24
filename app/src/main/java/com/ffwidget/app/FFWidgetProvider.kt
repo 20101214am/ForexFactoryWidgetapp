@@ -10,6 +10,7 @@ import android.content.Intent
 import android.provider.AlarmClock.EXTRA_HOUR
 import android.provider.AlarmClock.EXTRA_MINUTES
 import android.provider.AlarmClock.EXTRA_MESSAGE
+import android.provider.AlarmClock.EXTRA_DAYS
 import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
@@ -237,6 +238,8 @@ class FFWidgetProvider : AppWidgetProvider() {
                         putExtra(EXTRA_HOUR, h)
                         putExtra(EXTRA_MINUTES, m)
                         putExtra(EXTRA_MESSAGE, "FF: ${e.title}")
+                        // 设为「每周X」重复：X 取该新闻所在的本地星期几
+                        putExtra(EXTRA_DAYS, arrayListOf(TimeUtils.localDayOfWeek(e.dateIso)))
                     }
                     val alarmPi = PendingIntent.getActivity(
                         context, alarmReq++, alarmIntent,

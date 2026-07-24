@@ -63,6 +63,16 @@ object TimeUtils {
         return Pair(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
     }
 
+    // 跳闹钟用：事件在手机本地时区对应的星期几（1=周一..7=周日），
+    // 与 AlarmClock.EXTRA_DAYS 约定一致，用于设定「每周X」重复提醒
+    fun localDayOfWeek(iso: String): Int {
+        val d = parse(iso) ?: return 2
+        val cal = Calendar.getInstance() // 本地时区
+        cal.time = d
+        val calDow = cal.get(Calendar.DAY_OF_WEEK) // 1=周日..7=周六
+        return ((calDow - 2 + 7) % 7) + 1 // 转为 1=周一..7=周日
+    }
+
     // 今天（美国东部时区）的日期键 yyyy-MM-dd，用于判断「今日是否有重大新闻」
     fun todayETKey(): String {
         val cal = Calendar.getInstance(ET)
