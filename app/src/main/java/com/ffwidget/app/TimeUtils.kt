@@ -66,14 +66,14 @@ object TimeUtils {
         return Pair(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE))
     }
 
-    // 跳闹钟用：事件在手机本地时区对应的星期几（1=周一..7=周日），
-    // 与 AlarmClock.EXTRA_DAYS 约定一致，用于设定「每周X」重复提醒
+    // 跳闹钟用：事件在北京时间对应的星期几，直接返回 Calendar.DAY_OF_WEEK 原始值。
+    // 注意：AlarmClock.EXTRA_DAYS 约定就是 Calendar 编号（1=周日..7=周六），
+    // 切勿自行重映射，否则系统闹钟会整体错一天。
     fun localDayOfWeek(iso: String): Int {
-        val d = parse(iso) ?: return 2
+        val d = parse(iso) ?: return Calendar.MONDAY
         val cal = Calendar.getInstance(BJ) // 北京时间时区
         cal.time = d
-        val calDow = cal.get(Calendar.DAY_OF_WEEK) // 1=周日..7=周六
-        return ((calDow - 2 + 7) % 7) + 1 // 转为 1=周一..7=周日
+        return cal.get(Calendar.DAY_OF_WEEK) // 1=周日..7=周六，符合 AlarmClock 约定
     }
 
     // 今天（美国东部时区）的日期键 yyyy-MM-dd，用于判断「今日是否有重大新闻」
