@@ -170,6 +170,21 @@ object FFRepository {
     // 数据来源：net=网络，offline=内置离线
     fun source(context: Context): String = prefs(context).getString(KEY_SOURCE, "net") ?: "net"
 
+    // 缓存中的最新事件日期（美东），用于判断数据是否跨周过期
+    fun newestEventDay(context: Context): String? {
+        val events = loadCached(context)
+        if (events.isEmpty()) return null
+        return events.mapNotNull { TimeUtils.dayKey(it.dateIso) }
+            .filter { it.isNotEmpty() }
+            .maxOrNull()
+    }
+
+    // 数据是否明显过期：最新事件日期早于今天（美东）即视为跨周/过期
+    fun isStale(context: Context): Boolean {
+        val newest = newestEventDay(context) ?: return true
+        return newest < TimeUtils.todayETKey()
+    }
+
     // 是否曾尝试拉取但失败（用于显示「加载失败」而不是一直「加载中」）
     fun lastFailed(context: Context): Boolean =
         prefs(context).getString(KEY_STATUS, "") == "fail" && lastUpdated(context) == 0L

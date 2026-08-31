@@ -44,6 +44,15 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
     }
 
+    override fun onDisabled(context: Context) {
+        // 最后一个小组件被移除时，取消所有后台任务，避免空跑耗电
+        val wm = WorkManager.getInstance(context)
+        wm.cancelUniqueWork("ff-periodic-fetch")
+        wm.cancelUniqueWork("ff-periodic-ui")
+        wm.cancelUniqueWork("ff-init")
+        wm.cancelUniqueWork("ff-refresh")
+    }
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
@@ -57,7 +66,15 @@ class FFWidgetProvider : AppWidgetProvider() {
                     )
             }
             // 覆盖安装 / 升级后，自动刷新桌面上已有的小部件（避免旧「加载中」残留）
-            Intent.ACTION_MY_PACKAGE_REPLACED -> updateAll(context)
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                scheduleRefresh(context)
+                updateAll(context)
+            }
+            // 开机后重调度后台任务，否则系统不会再主动触发 WorkManager 周期任务
+            Intent.ACTION_BOOT_COMPLETED -> {
+                scheduleRefresh(context)
+                updateAll(context)
+            }
         }
     }
 
@@ -168,13 +185,11 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_root, openPi)
 
-            // 副标题：正在刷新时显示「正在更新…」；否则显示数据来源 / 更新时间
+            // 副标题：正在刷新时显示「正在更新…」；否则显示数据来源 / 更新时间 / 是否过期
             val subText = if (refreshing) {
                 context.getString(R.string.refreshing)
             } else {
-                val src = FFRepository.source(context)
-                val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
-                if (src == "offline") "$ago · 离线内置" else ago
+                buildSubText(context)
             }
             rv.setTextViewText(R.id.widget_sub, subText)
 
@@ -195,6 +210,24 @@ class FFWidgetProvider : AppWidgetProvider() {
             }
 
             mgr.updateAppWidget(id, rv)
+        }
+
+        private fun buildSubText(context: Context): CharSequence {
+            val src = FFRepository.source(context)
+            val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
+            val prefix = if (src == "offline") "内置离线" else ago
+            return if (FFRepository.isStale(context)) {
+                val s = SpannableStringBuilder()
+                s.append("$prefix · 数据已过期，请点刷新")
+                s.setSpan(
+                    ForegroundColorSpan(Color.parseColor("#E53935")),
+                    prefix.length + 3, s.length,
+                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+                s
+            } else {
+                SpannableStringBuilder(prefix)
+            }
         }
 
         private fun buildRows(
@@ -305,16 +338,33 @@ class FFWidgetProvider : AppWidgetProvider() {
         }
 
         private fun scheduleRefresh(context: Context) {
-            // 本周日历数据无需实时更新：每 6 小时拉取一次足够覆盖 FF 的时间修订/临时新增，省电省流量
-            val req = PeriodicWorkRequestBuilder<CalendarWorker>(6, TimeUnit.HOURS)
+            val wm = WorkManager.getInstance(context)
+
+            // 取消旧版 6 小时单一任务，避免升级后留下两个周期任务互相干扰
+            try {
+                wm.cancelUniqueWork("ff-periodic")
+            } catch (_: Exception) {
+            }
+
+            // 任务1：每 4 小时在有网时拉取 ForexFactory 本周数据。
+            // 比之前的 6 小时更勤，避免跨周后长时间显示旧数据。
+            val fetchReq = PeriodicWorkRequestBuilder<CalendarWorker>(4, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
                 .build()
-            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                "ff-periodic", ExistingPeriodicWorkPolicy.UPDATE, req
+            wm.enqueueUniquePeriodicWork(
+                "ff-periodic-fetch", ExistingPeriodicWorkPolicy.UPDATE, fetchReq
+            )
+
+            // 任务2：每 30 分钟无网也能触发一次 UI 重绘，确保「X 分钟前更新」
+            // 以及系统 widget 周期更新停摆时仍有兜底刷新。
+            val uiReq = PeriodicWorkRequestBuilder<CalendarWorker>(30, TimeUnit.MINUTES)
+                .build()
+            wm.enqueueUniquePeriodicWork(
+                "ff-periodic-ui", ExistingPeriodicWorkPolicy.UPDATE, uiReq
             )
         }
     }
