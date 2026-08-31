@@ -53,6 +53,9 @@ class FFWidgetProvider : AppWidgetProvider() {
         wm.cancelUniqueWork("ff-refresh")
     }
 
+    // 供外部（如设置页）查询当前刷新周期，便于 UI 展示
+    fun fetchIntervalHours(): Int = 6
+
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
@@ -340,15 +343,17 @@ class FFWidgetProvider : AppWidgetProvider() {
         private fun scheduleRefresh(context: Context) {
             val wm = WorkManager.getInstance(context)
 
-            // 取消旧版 6 小时单一任务，避免升级后留下两个周期任务互相干扰
+            // 取消旧版任务，避免升级后留下多余周期任务互相干扰
             try {
                 wm.cancelUniqueWork("ff-periodic")
+                wm.cancelUniqueWork("ff-periodic-ui")
             } catch (_: Exception) {
             }
 
-            // 任务1：每 4 小时在有网时拉取 ForexFactory 本周数据。
-            // 比之前的 6 小时更勤，避免跨周后长时间显示旧数据。
-            val fetchReq = PeriodicWorkRequestBuilder<CalendarWorker>(4, TimeUnit.HOURS)
+            // 唯一周期任务：每 6 小时在有网时拉取 ForexFactory 本周数据并重绘。
+            // 经济日历是周级别数据（事件时间提前数日确定），6 小时足够且省电。
+            // UI 的常规重绘交由系统 updatePeriodMillis（1 小时）驱动，无需额外 Worker。
+            val fetchReq = PeriodicWorkRequestBuilder<CalendarWorker>(6, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -357,14 +362,6 @@ class FFWidgetProvider : AppWidgetProvider() {
                 .build()
             wm.enqueueUniquePeriodicWork(
                 "ff-periodic-fetch", ExistingPeriodicWorkPolicy.UPDATE, fetchReq
-            )
-
-            // 任务2：每 30 分钟无网也能触发一次 UI 重绘，确保「X 分钟前更新」
-            // 以及系统 widget 周期更新停摆时仍有兜底刷新。
-            val uiReq = PeriodicWorkRequestBuilder<CalendarWorker>(30, TimeUnit.MINUTES)
-                .build()
-            wm.enqueueUniquePeriodicWork(
-                "ff-periodic-ui", ExistingPeriodicWorkPolicy.UPDATE, uiReq
             )
         }
     }
