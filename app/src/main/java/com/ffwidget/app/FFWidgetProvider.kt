@@ -227,17 +227,43 @@ class FFWidgetProvider : AppWidgetProvider() {
             val src = FFRepository.source(context)
             val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
             val prefix = if (src == "offline") "内置离线" else ago
-            return if (FFRepository.isStale(context)) {
-                val s = SpannableStringBuilder()
-                s.append("$prefix · 数据已过期，请点刷新")
-                s.setSpan(
-                    ForegroundColorSpan(Color.parseColor("#E53935")),
-                    prefix.length + 3, s.length,
-                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-                s
-            } else {
-                SpannableStringBuilder(prefix)
+            val result = FFRepository.lastRefreshResult(context)
+            val sb = SpannableStringBuilder()
+            return when (result) {
+                // 联网彻底失败、连内置数据都没有
+                "fail" -> {
+                    sb.append("刷新失败，无数据")
+                    sb.setSpan(
+                        ForegroundColorSpan(Color.parseColor("#E53935")),
+                        0, sb.length,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    sb
+                }
+                // 联网失败，但用缓存/内置数据撑住了——明确告诉用户现在看到的是旧数据
+                "cache" -> {
+                    sb.append("$prefix · 刷新失败，显示缓存")
+                    sb.setSpan(
+                        ForegroundColorSpan(Color.parseColor("#E53935")),
+                        prefix.length + 3, sb.length,
+                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    )
+                    sb
+                }
+                // 联网成功或尚无记录：正常显示来源/时间，过期时仍给红色告警
+                else -> {
+                    if (FFRepository.isStale(context)) {
+                        sb.append("$prefix · 数据已过期，请点刷新")
+                        sb.setSpan(
+                            ForegroundColorSpan(Color.parseColor("#E53935")),
+                            prefix.length + 3, sb.length,
+                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                        sb
+                    } else {
+                        SpannableStringBuilder(prefix)
+                    }
+                }
             }
         }
 

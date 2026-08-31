@@ -28,20 +28,30 @@ object FFRepository {
     private const val KEY_UPDATED = "updated_ts"
     private const val KEY_STATUS = "fetch_status"   // ok / fail
     private const val KEY_SOURCE = "fetch_source"   // net / offline
+    private const val KEY_REFRESH_RESULT = "refresh_result" // net / cache / fail：最近一次刷新的真实结果
 
     // 拉取 -> 解析 -> 仅保留 High + Holiday -> 按时间排序 -> 写入缓存
     // 顺序：网络（主源+两个镜像）优先，全部失败再试内置离线数据（assets/ff_data.json）。
     // 任何一个候选能解析成功即视为成功，保证国内连不上外网时也能显示内置数据。
+    // 同时记录本次刷新真实结果（net=联网成功 / cache=仅用缓存 / fail=全失败），供副标题提示。
     fun refresh(context: Context): Boolean {
         val net = downloadWithTimeout()
         val order = mutableListOf<String>()
         if (net != null) order.add(net)            // 网络数据优先（更鲜）
         loadBundled(context)?.let { order.add(it) } // 内置离线兜底
+        if (order.isEmpty()) {
+            prefs(context).edit().putString(KEY_REFRESH_RESULT, "fail").apply()
+            return false
+        }
         for (raw in order) {
             val source = if (raw === net) "net" else "offline"
-            if (cacheParsed(context, raw, source)) return true
+            if (cacheParsed(context, raw, source)) {
+                val result = if (raw === net) "net" else "cache"
+                prefs(context).edit().putString(KEY_REFRESH_RESULT, result).apply()
+                return true
+            }
         }
-        prefs(context).edit().putString(KEY_STATUS, "fail").apply()
+        prefs(context).edit().putString(KEY_REFRESH_RESULT, "fail").apply()
         return false
     }
 
@@ -206,6 +216,10 @@ object FFRepository {
     // 是否曾尝试拉取但失败（用于显示「加载失败」而不是一直「加载中」）
     fun lastFailed(context: Context): Boolean =
         prefs(context).getString(KEY_STATUS, "") == "fail" && lastUpdated(context) == 0L
+
+    // 最近一次刷新的真实结果：net=联网成功 / cache=仅用缓存(联网失败) / fail=全失败
+    fun lastRefreshResult(context: Context): String =
+        prefs(context).getString(KEY_REFRESH_RESULT, "") ?: ""
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
