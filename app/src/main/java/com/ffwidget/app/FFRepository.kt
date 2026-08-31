@@ -7,6 +7,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 object FFRepository {
 
@@ -31,7 +33,7 @@ object FFRepository {
     // 顺序：网络（主源+两个镜像）优先，全部失败再试内置离线数据（assets/ff_data.json）。
     // 任何一个候选能解析成功即视为成功，保证国内连不上外网时也能显示内置数据。
     fun refresh(context: Context): Boolean {
-        val net = download()
+        val net = downloadWithTimeout()
         val order = mutableListOf<String>()
         if (net != null) order.add(net)            // 网络数据优先（更鲜）
         loadBundled(context)?.let { order.add(it) } // 内置离线兜底
@@ -64,10 +66,26 @@ object FFRepository {
         return null
     }
 
+    // 带总超时的拉取：国内网络下外部端点可能被静默丢弃（connectTimeout 不生效，TCP 重传可达数分钟），
+    // 若整体超过 12 秒仍未返回，直接放弃网络、走内置缓存，避免后台线程长时间挂起导致「正在更新」永不消失。
+    private fun downloadWithTimeout(): String? {
+        val executor = Executors.newSingleThreadExecutor()
+        val future = executor.submit<String?> { download() }
+        return try {
+            future.get(12, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            future.cancel(true)
+            Log.w("FFRepo", "network refresh timed out (12s), fall back to cache: ${e.message}")
+            null
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
     private fun fetchFrom(urlStr: String): String {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
-        conn.connectTimeout = 5000
-        conn.readTimeout = 5000
+        conn.connectTimeout = 3500
+        conn.readTimeout = 3500
         conn.requestMethod = "GET"
         conn.setRequestProperty("User-Agent", "Mozilla/5.0")
         try {

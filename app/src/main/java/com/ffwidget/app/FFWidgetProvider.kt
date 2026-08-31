@@ -15,6 +15,8 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.graphics.Color
+import android.os.Handler
+import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -62,6 +64,12 @@ class FFWidgetProvider : AppWidgetProvider() {
             ACTION_REFRESH -> {
                 // 立即给反馈：先把状态改成「正在更新…」，避免点击后毫无反应
                 updateAll(context, refreshing = true)
+                // 兜底：无论后台 Worker 是否真正跑完，15 秒后强制用缓存重绘一遍，
+                // 确保「正在更新…」不会因网络卡死/Worker 未运行而永远停留。
+                val appCtx = context.applicationContext
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try { updateAll(appCtx) } catch (_: Exception) {}
+                }, 15000)
                 WorkManager.getInstance(context)
                     .enqueueUniqueWork(
                         "ff-refresh", ExistingWorkPolicy.REPLACE,
