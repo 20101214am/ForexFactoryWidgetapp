@@ -15,8 +15,6 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.RemoteViews
 import android.graphics.Color
-import android.os.Handler
-import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.SpannableStringBuilder
@@ -46,30 +44,12 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
     }
 
-    override fun onDisabled(context: Context) {
-        // 最后一个小组件被移除时，取消所有后台任务，避免空跑耗电
-        val wm = WorkManager.getInstance(context)
-        wm.cancelUniqueWork("ff-periodic-fetch")
-        wm.cancelUniqueWork("ff-periodic-ui")
-        wm.cancelUniqueWork("ff-init")
-        wm.cancelUniqueWork("ff-refresh")
-    }
-
-    // 供外部（如设置页）查询当前刷新周期，便于 UI 展示
-    fun fetchIntervalHours(): Int = 6
-
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         when (intent.action) {
             ACTION_REFRESH -> {
                 // 立即给反馈：先把状态改成「正在更新…」，避免点击后毫无反应
                 updateAll(context, refreshing = true)
-                // 兜底：无论后台 Worker 是否真正跑完，15 秒后强制用缓存重绘一遍，
-                // 确保「正在更新…」不会因网络卡死/Worker 未运行而永远停留。
-                val appCtx = context.applicationContext
-                Handler(Looper.getMainLooper()).postDelayed({
-                    try { updateAll(appCtx) } catch (_: Exception) {}
-                }, 15000)
                 WorkManager.getInstance(context)
                     .enqueueUniqueWork(
                         "ff-refresh", ExistingWorkPolicy.REPLACE,
@@ -77,15 +57,7 @@ class FFWidgetProvider : AppWidgetProvider() {
                     )
             }
             // 覆盖安装 / 升级后，自动刷新桌面上已有的小部件（避免旧「加载中」残留）
-            Intent.ACTION_MY_PACKAGE_REPLACED -> {
-                scheduleRefresh(context)
-                updateAll(context)
-            }
-            // 开机后重调度后台任务，否则系统不会再主动触发 WorkManager 周期任务
-            Intent.ACTION_BOOT_COMPLETED -> {
-                scheduleRefresh(context)
-                updateAll(context)
-            }
+            Intent.ACTION_MY_PACKAGE_REPLACED -> updateAll(context)
         }
     }
 
@@ -196,11 +168,13 @@ class FFWidgetProvider : AppWidgetProvider() {
             )
             rv.setOnClickPendingIntent(R.id.widget_root, openPi)
 
-            // 副标题：正在刷新时显示「正在更新…」；否则显示数据来源 / 更新时间 / 是否过期
+            // 副标题：正在刷新时显示「正在更新…」；否则显示数据来源 / 更新时间
             val subText = if (refreshing) {
                 context.getString(R.string.refreshing)
             } else {
-                buildSubText(context)
+                val src = FFRepository.source(context)
+                val at = TimeUtils.updatedAt(FFRepository.lastUpdated(context))
+                if (src == "offline") "$at · 离线内置" else at
             }
             rv.setTextViewText(R.id.widget_sub, subText)
 
@@ -221,50 +195,6 @@ class FFWidgetProvider : AppWidgetProvider() {
             }
 
             mgr.updateAppWidget(id, rv)
-        }
-
-        private fun buildSubText(context: Context): CharSequence {
-            val src = FFRepository.source(context)
-            val ago = TimeUtils.updatedAgo(FFRepository.lastUpdated(context))
-            val prefix = if (src == "offline") "内置离线" else ago
-            val result = FFRepository.lastRefreshResult(context)
-            val sb = SpannableStringBuilder()
-            return when (result) {
-                // 联网彻底失败、连内置数据都没有
-                "fail" -> {
-                    sb.append("刷新失败，无数据")
-                    sb.setSpan(
-                        ForegroundColorSpan(Color.parseColor("#E53935")),
-                        0, sb.length,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                    sb
-                }
-                // 联网失败，但用缓存/内置数据撑住了——明确告诉用户现在看到的是旧数据
-                "cache" -> {
-                    sb.append("$prefix · 刷新失败，显示缓存")
-                    sb.setSpan(
-                        ForegroundColorSpan(Color.parseColor("#E53935")),
-                        prefix.length + 3, sb.length,
-                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                    )
-                    sb
-                }
-                // 联网成功或尚无记录：正常显示来源/时间，过期时仍给红色告警
-                else -> {
-                    if (FFRepository.isStale(context)) {
-                        sb.append("$prefix · 数据已过期，请点刷新")
-                        sb.setSpan(
-                            ForegroundColorSpan(Color.parseColor("#E53935")),
-                            prefix.length + 3, sb.length,
-                            Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                        )
-                        sb
-                    } else {
-                        SpannableStringBuilder(prefix)
-                    }
-                }
-            }
         }
 
         private fun buildRows(
@@ -375,27 +305,16 @@ class FFWidgetProvider : AppWidgetProvider() {
         }
 
         private fun scheduleRefresh(context: Context) {
-            val wm = WorkManager.getInstance(context)
-
-            // 取消旧版任务，避免升级后留下多余周期任务互相干扰
-            try {
-                wm.cancelUniqueWork("ff-periodic")
-                wm.cancelUniqueWork("ff-periodic-ui")
-            } catch (_: Exception) {
-            }
-
-            // 唯一周期任务：每 6 小时在有网时拉取 ForexFactory 本周数据并重绘。
-            // 经济日历是周级别数据（事件时间提前数日确定），6 小时足够且省电。
-            // UI 的常规重绘交由系统 updatePeriodMillis（1 小时）驱动，无需额外 Worker。
-            val fetchReq = PeriodicWorkRequestBuilder<CalendarWorker>(6, TimeUnit.HOURS)
+            // 本周日历数据无需实时更新：每 6 小时拉取一次足够覆盖 FF 的时间修订/临时新增，省电省流量
+            val req = PeriodicWorkRequestBuilder<CalendarWorker>(6, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
                 )
                 .build()
-            wm.enqueueUniquePeriodicWork(
-                "ff-periodic-fetch", ExistingPeriodicWorkPolicy.UPDATE, fetchReq
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                "ff-periodic", ExistingPeriodicWorkPolicy.UPDATE, req
             )
         }
     }

@@ -82,9 +82,11 @@ object TimeUtils {
         return dayKeyFmt.format(cal.time)
     }
 
-    fun updatedAgo(ts: Long): String {
+    // 副标题：显示「更新于」实际时间（北京时间），取代「刚刚更新 / X 分钟前」
+    private val updatedFmt = SimpleDateFormat("MM-dd HH:mm", Locale.CHINA).apply { timeZone = BJ }
+
+    fun updatedAt(ts: Long): String {
         if (ts == 0L) return "尚未更新"
-        val min = (System.currentTimeMillis() - ts) / 60000
-        return if (min < 1) "刚刚更新" else "$min 分钟前更新"
+        return "更新于 " + updatedFmt.format(Date(ts))
     }
 }
